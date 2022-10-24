@@ -1,0 +1,218 @@
+= JVM observability for your own good
+:idprefix:
+:stem: asciimath
+:backend: html
+:source-highlighter: highlightjs
+:revealjs_history: true
+:revealjs_theme: night
+:revealjs_width: 1920
+:revealjs_height: 1080
+:revealjs_controls: false
+:imagesdir: images
+:customcss: css/custom.css
+:title-slide-background-image: https://www.publicdomainpictures.net/pictures/10000/velka/1-1230634165FAXt.jpg
+
+== about me
+
+Jarek Pałka (@j_palka)
+
+Neo4j (a graph database) staff engineer/team lead/benchmarking team
+
+over 20 years with JVM ( and people) +
+speaker, coder, architect
+
+founder of SegFault (https://segfault.events) conference +
+godfather of Programistyczna Grupa Rozwoju +
+and proud father of new baby, **JVM Club** (working title) +
+
+
+[role="highlight_section_title"]
+== Observability
+
+image::https://media.giphy.com/media/zQc8STzaOlJ3q/giphy.gif[background]
+
+=== !
+
+Observability is the ability to measure the internal states of a system by examining its outputs. A system is considered “observable” if the current state can be estimated by only using information from outputs, namely sensor data. 
+
+[role="highlight_section_title"]
+== JVM
+
+image::https://media.giphy.com/media/dyRhCAXGENobdYucFD/giphy.gif[background,size=contain]
+
+=== state of observability in JVM
+
+\... it just works ...
+
+Your JVM and its distribution is packed with tools to do a proper JVM observability.
+
+== !
+
+image::https://media.giphy.com/media/2cehTmp8rASyunE10R/giphy.gif[background]
+
+=== !
+
+First let's split JVM observability into different categories:
+
+* memory
+* just-in-time compiler
+* threads
+
+
+=== swiss knife aka jcmd
+
+    Usage: jcmd <pid | main class> <command ...|PerfCounter.print|-f file>
+   or: jcmd -l                                                    
+   or: jcmd -h                                    
+                
+=== !
+
+    command must be a valid jcmd command for the selected jvm.      
+  Use the command "help" to see which commands are available.   
+  If the pid is 0, commands will be sent to all Java processes.   
+  The main class argument will be used to match (either partially 
+  or fully) the class used to start Java.                         
+  If no options are given, lists Java processes (same as -l).
+
+=== memory
+
+with jcmd you can:
+
+* see usage of memory by different regions
+* get class histogram
+* create heap dump
+
+
+=== !
+
+GC.heap_info:: will show GC memory pools
+GC.heap_dump:: will dump heap into a file
+GC.class_histogram:: will show histogram of objects on heap (per class)
+VM.stringtable::
+VM.metaspace:: 
+
+=== lies
+
+all of the above just shows heap (+metaspace), but it is not all memory used by JVM process
+
+    java -XX:NativeMemoryTracking=summary
+
+    jcmd <pid> VM.native_memory
+
+=== just-in-time compiler
+
+* Compile.queue
+* Compiler.codecache
+* Compiler.codelist
+* Compiler.CodeHeap_Analytics
+
+=== threads
+
+* Thread.print
+
+=== last but not least
+
+[quote,,JVM documentation]
+Java Flight Recorder (JFR) is a tool for collecting diagnostic and profiling data about a running Java application. It is integrated into the Java Virtual Machine (JVM) and causes almost no performance overhead, so it can be used even in heavily loaded production environments. When default settings are used, both internal testing and customer feedback indicate that performance impact is less than one percent
+
+=== configuration
+
+    jcmd 519003 JFR.start name=profiling 
+    jcmd 519003 JFR.dump name=profiling filename=recording.jfr
+    jcmd 519003 JFR.stop name=profiling filename=recording.jfr
+
+=== enabling JFR on startup
+
+    java -XX:StartFlightRecording=dumponexit=true,name=profiling,filename=myrecording.jfr
+    java -XX:StartFlightRecording=dumponexit=true,duration=60s,filename=myrecording.jfr
+
+=== Java Mission Control
+
+https://wiki.openjdk.org/display/jmc[OpenJDK JMC project page]
+https://adoptium.net/jmc/[Downloads]
+
+=== settings
+
+JFR has really fine grained configuration using settings files.
+
+You can modify and edit these files, using JMC (Java Mission Control), +
+go check Window -> Flight Recording template manager
+
+=== !
+
+JDK comes with two predefined configs, +
+you can find them in `$JAVA_HOME/lib/jfr`
+
+=== more detailed JFR recordings
+
+    jcmd <pid> JFR.start settings=profile name=profiling 
+
+== unified logging
+
+https://openjdk.org/jeps/158[JEP 158: Unified JVM Logging] introduced unified logging
+facility for all JMV components
+
+    java -Xlog:help
+
+=== !
+
+tags:: logging framework defines a set of tags in the JVM. Each tag is identified by its name (for example: gc, compiler, threads, etc).
+level:: og message has a logging level associated with it. The available levels are error, warning, info, debug, trace and develop in increasing order of verbosity. 
+decorations:: logging messages are decorated with information about the message.  
+
+=== examples
+
+    -Xlog:gc,safepoint
+    -Xlog:jit+inlining,jit+compilation:file=compiler.logs
+    -Xlog:stats+safepoint
+
+=== runtime configuration
+
+if you want to change or enable unified logging at runtime, there is jcmd command for it
+
+    jcmd <pid> VM.log what=gc,safepoint
+    jcmd <pid> VM.log list
+    jcmd <pid> VM.log disable
+
+=== when thing go really bad
+
+=== hotspot debugger
+
+=== !
+
+`jhsdb` is a pretty advanced tool, +
+which actually doesn't fit an observability definition, +
+but I found that not many people know about it 
+
+=== !
+
+HotSpot debugger can connect to running JVM process, +
+but were I found it more useful, + 
+is debugging core dumps +
+so when something terrible happend inside of JVM
+
+=== !
+
+Remember you need to configure your OS to do core dumps:
+
+    ulimit -c unlimited
+
+and check where your kernel will dump core files:
+
+    sysctl kernel.core_pattern
+
+=== !
+
+You will need core dump file and JVM + 
+IMPORTANT: remember to use exactly the same as the failed process, otherwise things will get weird
+
+    jhsdb hsdb --core /var/lib/apport/coredump/core.475765 --exe $JAVA_HOME/bin/java
+
+=== !
+
+you could also get thread stack print and heap dump from core dump file
+
+    jhsdb jstack --core /var/lib/apport/coredump/core.475765 --exe $JAVA_HOME/bin/java
+    jhsdb jmap --binaryheap --dumpfile heap.dump --core /var/lib/apport/coredump/core.475765 --exe $JAVA_HOME/bin/java
+
+== thank you
