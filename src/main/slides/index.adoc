@@ -74,6 +74,12 @@ First let's split JVM observability into different categories:
   or fully) the class used to start Java.                         
   If no options are given, lists Java processes (same as -l).
 
+=== help!
+
+It will printout all commands available for running JVM process.
+
+    jcmd <pid> help
+
 === memory
 
 with jcmd you can:
@@ -82,18 +88,18 @@ with jcmd you can:
 * get class histogram
 * create heap dump
 
-
 === !
 
 GC.heap_info:: will show GC memory pools
 GC.heap_dump:: will dump heap into a file
 GC.class_histogram:: will show histogram of objects on heap (per class)
-VM.stringtable::
-VM.metaspace:: 
+VM.stringtable:: string deduplication table
+VM.metaspace:: loaded class and different other things
 
 === lies
 
-all of the above just shows heap (+metaspace), but it is not all memory used by JVM process
+all of the above just shows heap (+metaspace), +
+but it is not all memory used by JVM process
 
     java -XX:NativeMemoryTracking=summary
 
@@ -101,7 +107,7 @@ all of the above just shows heap (+metaspace), but it is not all memory used by 
 
 === just-in-time compiler
 
-* Compile.queue
+* Compiler.queue
 * Compiler.codecache
 * Compiler.codelist
 * Compiler.CodeHeap_Analytics
@@ -135,8 +141,9 @@ https://adoptium.net/jmc/[Downloads]
 
 JFR has really fine grained configuration using settings files.
 
-You can modify and edit these files, using JMC (Java Mission Control), +
-go check Window -> Flight Recording template manager
+You can modify and edit these files, +
+using JMC (Java Mission Control), +
+go check `Window -> Flight Recording template manager`
 
 === !
 
@@ -147,9 +154,16 @@ you can find them in `$JAVA_HOME/lib/jfr`
 
     jcmd <pid> JFR.start settings=profile name=profiling 
 
+=== how deep is your stack?
+
+The default value is 256, +
+if you stack is deeper, +
+JFR will lie to you +
+(it lies anyways)
+
 == unified logging
 
-https://openjdk.org/jeps/158[JEP 158: Unified JVM Logging] introduced unified logging
+https://openjdk.org/jeps/158[JEP 158: Unified JVM Logging] introduced unified logging +
 facility for all JMV components
 
     java -Xlog:help
@@ -176,18 +190,20 @@ if you want to change or enable unified logging at runtime, there is jcmd comman
 
 === when thing go really bad
 
+image::https://media.giphy.com/media/xT9Igk6pl01yVK0FHO/giphy.gif[background]
+
 === hotspot debugger
 
 === !
 
 `jhsdb` is a pretty advanced tool, +
 which actually doesn't fit an observability definition, +
-but I found that not many people know about it 
+but I found that not many people don't know about it 
 
 === !
 
 HotSpot debugger can connect to running JVM process, +
-but were I found it more useful, + 
+but were I found it most useful, + 
 is debugging core dumps +
 so when something terrible happend inside of JVM
 
@@ -204,7 +220,8 @@ and check where your kernel will dump core files:
 === !
 
 You will need core dump file and JVM + 
-IMPORTANT: remember to use exactly the same as the failed process, otherwise things will get weird
+IMPORTANT: remember to use exactly the same +
+        as the failed process, otherwise things will get weird
 
     jhsdb hsdb --core /var/lib/apport/coredump/core.475765 --exe $JAVA_HOME/bin/java
 
@@ -214,5 +231,62 @@ you could also get thread stack print and heap dump from core dump file
 
     jhsdb jstack --core /var/lib/apport/coredump/core.475765 --exe $JAVA_HOME/bin/java
     jhsdb jmap --binaryheap --dumpfile heap.dump --core /var/lib/apport/coredump/core.475765 --exe $JAVA_HOME/bin/java
+
+== honorable mentions
+
+=== async profiler
+
+JFR is a good tool, but it lies, +
+as it doesn't show native frames +
+like JVM code or syscalls
+
+async profiler solves this problem
+
+=== !
+
+start your JVM process +
+(extra options needed to increase accuracy):
+
+    java -XX:+UnlockDiagnosticVMOptions -XX:+DebugNonSafepoints
+
+make sure you systems supports collection of perf events:
+    
+    sysctl kernel.kptr_restrict=0
+    sysctl kernel.perf_event_paranoid=1
+
+and then start profiling session:
+
+    ./profiler.sh start <pid>
+    ./profiler.sh stop -o flamegraph -f flamegraph.html <pid>
+
+=== highly addictive drug
+
+async profiler is perfect at +
+taking snapshot of you application
+
+but it misses a time dimension
+
+=== pyroscope
+
+image::https://media.giphy.com/media/wR4bJk4jF5Tl6/giphy.gif[background]
+
+=== !
+
+you need to see to believe it ;)
+
+=== JITWatch
+
+reading JIT logs and trying to understand what is going on +
+requires IQ over 220 and can damage your brain and cause serious lost of trust in humanity
+
+https://github.com/AdoptOpenJDK/jitwatch[]
+
+=== !
+
+    -XX:+UnlockDiagnosticVMOptions -Xlog:class+load=info  -XX:+LogCompilation -XX:+DebugNonSafepoints -XX:PrintAssembly -XX:LogFile=compilation.log
+
+=== Memory Analyzer Tool
+
+=== GC toolkit
 
 == thank you
